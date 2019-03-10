@@ -1,0 +1,78 @@
+#!/usr/bin/env sh
+
+set -eu
+
+readonly GIT_PROFILES="${GIT_PROFILES:-"$HOME/.gitprofiles"}"
+readonly GIT_PROFILE_FUNCTION_PREFIX='profile_'
+
+version() {
+  echo 'git profile v0.1.0'
+}
+
+usage() {
+    cat <<\EOF
+usage: git profile [options] [profile_name]
+
+Options:
+  -h                      Print help information
+  -l, --list              List all profiles
+      --version           Print version information
+
+Examples:
+  1. List all profiles    $ git profile -l
+  2. Switch to a profile  $ git profile profile1
+EOF
+}
+
+list() {
+  [ -f "$GIT_PROFILES" ] || return 0
+  # Basic Regular Expressions: http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03_08
+  grep -o "${GIT_PROFILE_FUNCTION_PREFIX}[a-zA-Z0-9]\+" < "$GIT_PROFILES" | while IFS='' read -r profile_function; do
+    if is_function "$profile_function"; then
+      echo "${profile_function#"$GIT_PROFILE_FUNCTION_PREFIX"}"
+    fi
+  done
+}
+
+switch_profile() {
+  if ! is_function "$GIT_PROFILE_FUNCTION_PREFIX${1:?}"; then
+    echo "$1: profile not found" >&2
+    return 1
+  fi
+  "$GIT_PROFILE_FUNCTION_PREFIX$1"
+}
+
+ensure_nonoptions() {
+  if [ $# -gt 0 ] && [ "${1:?}" != '--' ] && [ "${1#"-"}" != "$1" ]; then
+    echo "unknown option: $1" >&2
+    usage >&2
+    return 1
+  fi
+}
+
+includeif() {
+  if [ -f "${1:?}" ]; then . "$1"; fi
+}
+
+is_function() {
+  type "${1:?}" 2> /dev/null | head -n 1 | grep -Fq ' function'
+}
+
+require_params() {
+  if [ $# -eq 0 ]; then usage; return 1; fi
+}
+
+main() {
+  require_params "$@"
+  case "${1:?}" in
+    '--'            ) shift; require_params "$@" >&2;;
+    '--version'     ) version; return 0;;
+    '-h'            ) usage; return 0;;
+    '-l' | '--list' ) list; return 0;;
+    *               ) ensure_nonoptions "$@";;
+  esac
+  switch_profile "$1"
+}
+
+includeif "$GIT_PROFILES"
+main "$@"
